@@ -4,8 +4,8 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const pool = require('./db');
 const authenticateToken = require('./authJWT');
-
 const app = express();
+
 app.set('trust proxy', 1);
 app.use(express.json());
 
@@ -15,7 +15,7 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts, try again later.' },
 });
 
-// ---------- SIGNUP ----------
+// SIGNUP ENDPOINT
 app.post('/signup', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -24,25 +24,20 @@ app.post('/signup', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Invalid username or password (min 8 chars)' });
     }
 
-    console.log("Attempting to connect CloudSQL");
     const existing = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'Username already taken' });
     }
-    console.log("Username is unique");
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    console.log("Hashgin password");
 
     const result = await pool.query(
       'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id',
       [username, hashedPassword]
     );
-    console.log("Username created");
 
     const userId = result.rows[0].id;
     const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    console.log("Assisgning new JWT to user");
 
     res.status(201).json({ token });
   } catch (err) {
@@ -51,7 +46,7 @@ app.post('/signup', authLimiter, async (req, res) => {
   }
 });
 
-// ---------- LOGIN ----------
+// LOGIN ENDPOINT
 app.post('/login', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -75,18 +70,19 @@ app.post('/login', authLimiter, async (req, res) => {
   }
 });
 
-// ---------- PROTECTED EXAMPLE ----------
+// USER LIST ENDPOINT
 app.get('/profile', authenticateToken, async (req, res) => {
   const result = await pool.query('SELECT id, username FROM users WHERE id = $1', [req.user.userId]);
   res.json(result.rows[0]);
 });
 
 app.get('/users', authLimiter, async(req, res) => {
-    const userList = await pool.query("SELECT username from users");
+    const userList = await pool.query("SELECT username FROM users");
     userarr = [];
     for (i=0; i<userList.rowCount; i++) { userarr.push(userList.rows[i].username); }
     res.status(200).json({users:userarr});
 });
 
+// START SERVER
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
